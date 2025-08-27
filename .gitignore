@@ -1,0 +1,4 @@
+*.xlsx
+*.csv
+node_modules/
+dist/
