@@ -18,6 +18,7 @@ const erpStockFile = readFileSync(erpStockFileName, "utf-8")
 const shopFile = read(readFileSync(shopFileName).buffer)
 
 const latestSheetName = shopFile.SheetNames[shopFile.SheetNames.length - 1]
+console.log(`Processing sheet: ${latestSheetName}`)
 const range = utils.decode_range(shopFile.Sheets[latestSheetName]["!ref"])
 range.s.r = 2
 shopFile.Sheets[latestSheetName]["!ref"] = utils.encode_range(range)
