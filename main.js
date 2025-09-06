@@ -11,8 +11,8 @@ import fs from "node:fs";
 const ERPNEXT_EMAIL = process.env.ERPNEXT_EMAIL;
 const ERPNEXT_PASSWORD = process.env.ERPNEXT_PASSWORD;
 
-const shopDataFileName =
-  "G:/My Drive/Njeremoto Shop/Operations/2025/8-August/Njeremoto day end August 2025.xlsx";
+const addon = true ? "" : " Butchery";
+const shopDataFileName = `G:/My Drive/Njeremoto Shop/Operations/2025/9-September/Njeremoto${addon} day end September 2025.xlsx`;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -73,6 +73,15 @@ console.log(`Download path: ${downloadPath}`);
  */
 
 /**
+ * @typedef {{
+ *  item: string,
+ *  start: number,
+ *  end: number,
+ *  sold: number,
+ * }} SoldItem
+ */
+
+/**
  * @param {string} erpStockFileName
  * @returns {Array<ErpStockData>}
  */
@@ -123,6 +132,7 @@ function fetchShopData() {
 /**
  * @param {Array<ErpStockData>} formattedErpStockData
  * @param {Array<ShopData>} filteredShopData
+ * @returns {Array<SoldItem>}
  */
 function processData(formattedErpStockData, filteredShopData) {
   const finalData = [];
@@ -144,14 +154,18 @@ function processData(formattedErpStockData, filteredShopData) {
 
   const soldItems = finalData.filter((item) => item.sold > 0);
   console.table(soldItems);
+
+  return soldItems;
 }
 
 async function downloadErpCsvFile() {
   const browser = await puppeteer.launch({ headless: false });
   const page = await browser.newPage();
 
-  console.log("Clearing old downloads...");
-  fs.unlinkSync(path.resolve(downloadPath, "Items.csv"));
+  if (fs.existsSync(path.resolve(downloadPath, "Items.csv"))) {
+    console.log("Clearing old downloads...");
+    fs.unlinkSync(path.resolve(downloadPath, "Items.csv"));
+  }
 
   const client = await page.createCDPSession();
   await client.send("Page.setDownloadBehavior", {
@@ -186,8 +200,10 @@ async function downloadErpCsvFile() {
 
   await page.locator('input[data-fieldname="warehouse"]').fill("Stores - NEs");
   await sleep(2000);
-  await page.locator('div[role="option"] > p[title="Stores - NEs"]').click();
-  await sleep(2000);
+
+  await page.keyboard.press("Enter");
+
+  await page.locator('input[data-fieldname="ignore_empty_stock"]').click();
 
   await page
     .locator(
@@ -208,6 +224,54 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ *
+ * @param {Array<SoldItem>} soldItems
+ */
+async function enterSales(soldItems) {
+  const browser = await puppeteer.launch({ headless: false });
+  const page = await browser.newPage();
+
+  await page.setViewport({ width: 1080, height: 1024 });
+
+  await page.goto("https://njeremoto.jh.erpnext.com/app/point-of-sale");
+
+  await page.locator("#login_email").fill(ERPNEXT_EMAIL);
+  await page.locator("#login_password").fill(ERPNEXT_PASSWORD);
+
+  await Promise.all([
+    page.waitForNavigation(),
+    page.locator('.page-card-actions button[type="submit"]').click(),
+  ]);
+
+  await sleep(3000);
+  for (const soldItem of soldItems) {
+    await page
+      .locator('input[type="text"][class="input-with-feedback form-control"]')
+      .fill(soldItem.item);
+
+    await sleep(2000);
+
+    await page.evaluate(() => {
+      const cartElements = document.querySelectorAll(
+        'div[class="cart-item-wrapper"]'
+      );
+
+      /**
+       * @type {HTMLDivElement}
+       */
+      const lastCartElement = cartElements[cartElements.length - 1];
+      lastCartElement.click();
+    });
+
+    await page.locator('input[data-fieldname="qty"]').fill(`${soldItem.sold}`);
+    await sleep(1000);
+    await page.keyboard.press("Enter");
+    await sleep(1000);
+    await page.locator('div[class="close-btn"][title="Esc"]').click();
+  }
+}
+
 async function main() {
   await downloadErpCsvFile();
 
@@ -215,7 +279,10 @@ async function main() {
   const erpStockData = fetchErpData(erpStockFileName);
 
   const shopData = fetchShopData();
-  //   console.log(shopData);
+
+  const processedData = processData(erpStockData, shopData);
+
+  await enterSales(processedData);
 }
 
 await main();
