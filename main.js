@@ -11,7 +11,7 @@ import fs from "node:fs";
 const ERPNEXT_EMAIL = process.env.ERPNEXT_EMAIL;
 const ERPNEXT_PASSWORD = process.env.ERPNEXT_PASSWORD;
 const ERPNEXT_TOKEN = process.env.ERPNEXT_TOKEN;
-const ERPNEXT_URL = "https://njeremoto.jh.erpnext.com";
+const ERPNEXT_URL = process.env.ERPNEXT_URL;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

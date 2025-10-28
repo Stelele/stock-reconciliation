@@ -1,57 +1,55 @@
-# Stock Recalculation & POS Autofill (ERPNext)
+# Stock Recalculation + POS Draft (ERPNext)
 
-Automates a daily stock reconciliation workflow against ERPNext and optionally backfills POS quantities for items sold but not recorded. The script:
+Automates end-of-day stock reconciliation and creates a draft POS Invoice in ERPNext based on differences between ERP stock and your shop’s day‑end Excel.
 
-- Logs into ERPNext, creates a Stock Reconciliation, and downloads the Items CSV.
-- Reads your shop day-end Excel, calculates sold quantities = start − end.
-- Opens ERPNext POS and fills in item quantities for the calculated sold items.
+What it does
 
-This helps catch missed POS entries after a physical/day-end count.
+- Logs into ERPNext, opens Stock Reconciliation, fetches items from a warehouse, and downloads `Items.csv`.
+- Reads your latest day‑end Excel sheet and computes sold = ERP Quantity − Excel end.
+- Looks up standard selling prices and creates a draft POS Invoice via API with calculated quantities and a single Cash payment line (sum of item totals).
 
-## How It Works
+Flow
 
-1. Download ERP stock: Puppeteer logs into ERPNext Stock Reconciliation and downloads `Items.csv` to `downloads/`.
-2. Read shop file: The script opens your day-end Excel (latest sheet), trims the header, and filters rows that include both `add` and `total` columns.
-3. Match & compute: Matches shop `item` to ERP `Item Code`, computes `sold = Quantity − end` for items with positive sold.
-4. Create POS Invoice: Uses the ERPNext API to create a draft POS invoice with the calculated sold items and their quantities.
+1) Download ERP items: Puppeteer navigates to Stock Reconciliation and downloads `downloads/Items.csv`.
+2) Read shop sheet: Parses the latest sheet in the Excel workbook and trims the header rows.
+3) Compute deltas: Matches Excel `item` to ERP `Item Code`, computes `sold` per item, logs a console table.
+4) Create invoice: Calls ERPNext API to create a draft POS Invoice for sold items.
 
-Console prints a table of the sold items before POS entry.
+Requirements
 
-## Prerequisites
+- Node.js 18+
+- ERPNext user with access to Stock Reconciliation and POS
+- API key/secret for ERPNext (token auth)
+- Local Chromium/Chrome allowed to launch (Puppeteer visible browser)
 
-- Node.js 18+.
-- An ERPNext user with access to Stock Reconciliation and POS for your company/warehouse.
-- Items and barcodes in ERPNext that match what you type in POS search.
-- Network access to allow Puppeteer/Chromium to run. First install may download a browser.
-
-## Installation
+Setup
 
 ```bash
 npm install
 ```
 
-Create a `.env` file in the project root:
+Create `.env` in the project root:
 
 ```
 ERPNEXT_EMAIL=your.user@your-domain.com
 ERPNEXT_PASSWORD=your-erpnext-password
-ERPNEXT_TOKEN=your-erpnext-api-token
-ERPNEXT_URL=https://your-instance.erpnext.com
+ERPNEXT_TOKEN=api_key:api_secret
+ERPNEXT_URL=https://your-instance.example.com
 ```
 
-## Configuration
+The ERPNext URL is read from `.env` as `ERPNEXT_URL`.
 
-Open `main.js` and review the following:
+Configuration
 
-- `shopDataFileName`: Path to your day-end Excel. Example currently points to `G:/My Drive/.../Njeremoto day end September 2025.xlsx`. Update to your month/path.
-- `addon`: If you use a variant (e.g., " Butchery"), set accordingly to match your Excel filename.
-- Company/Warehouse: In `downloadErpCsvFile()` the script fills `Njeremoto Enterprises` and `Stores - NEs`. Change to your Company and Warehouse names used in ERPNext.
-- ERPNext URL: Set in your `.env` file as `ERPNEXT_URL`. The script will use this as the base URL for both web interface and API calls.
-- Downloads folder: Uses `./downloads`. Ensure it exists or allow Puppeteer to create it; you can create it manually if needed.
+- ERP URL: Set `ERPNEXT_URL` in `.env`.
+- Company: Update company name used in Stock Reconciliation in `main.js:205` and `main.js:209`.
+- Warehouse: Update warehouse in `main.js:217`, `main.js:226`, and POS item lines `main.js:275`.
+- POS profile/customer/currency: Adjust POS invoice defaults in `main.js:268–276`.
+- Shop Excel path: The path is built from current year/month and an optional department. Update the base path template in `main.js:300–302`.
+- Department: The run uses `butchery` by default in `main.js:379`. Change to `grocery` or wire a parameter if needed.
+- Downloads folder: Uses `./downloads` (created automatically if not present on first download).
 
-## Running
-
-You can run via npm script or node directly:
+Run
 
 ```powershell
 npm run main
@@ -59,40 +57,38 @@ npm run main
 node main.js
 ```
 
-What to expect:
+What you’ll see
 
-- A visible browser window opens (headless: false).
-- Script logs in with `.env` credentials.
-- Stock Reconciliation is opened; Items are fetched from your warehouse; a CSV downloads to `downloads/Items.csv`.
-- The script computes sold quantities from the Excel and prints them as a table.
-- POS opens and the script searches each item and sets the computed quantity.
+- A visible browser window.
+- Login to ERPNext, open Stock Reconciliation, fetch items from your warehouse, then download `downloads/Items.csv`.
+- Console table of computed sold quantities from the Excel sheet.
+- A draft POS Invoice created via API; the server response includes the document name.
 
-## Data Assumptions
+Data assumptions
 
-- ERP CSV headers match what ERPNext exports for Stock Reconciliation, including `Item Code` and `Quantity`.
-- Shop Excel contains columns named exactly: `item`, `add`, `total`, and `end ` (note the trailing space in `end ` per the current sheet headers).
-- The latest sheet in the workbook contains the day-end data to process.
+- ERP CSV includes headers such as `Item Code`, `Item Name`, and `Quantity` from Stock Reconciliation export.
+- Excel sheet columns must include: `item`, `add`, `total`, and `end ` (note the trailing space).
+- The latest worksheet in the file contains the day‑end data.
 
-If your headers differ, adjust the field names in `main.js` where they are referenced.
+Gotchas
 
-## ERPNext Tips
+- CSV parsing is simple (splits on commas) and assumes no embedded commas in fields. If your export includes quoted commas, consider switching to a robust CSV parser.
+- The script drops a few header/meta lines from the ERP CSV before mapping columns; if your export structure differs, adjust `fetchErpData()` in `main.js:98–120`.
+- The Excel path points to a Windows Google Drive location; update the template in `main.js:300–302` for your environment.
+- POS entry happens via API (creates a draft POS Invoice); it does not automate the POS UI.
 
-- Ensure the POS profile and price lists are configured so searched items appear and can be added to the cart.
-- If MFA or SSO is enforced, consider an app/password or a test user for automation.
-- UI element locators (selectors) may change with ERPNext versions; if the script breaks on a selector, update the corresponding `page.locator(...)` in `main.js`.
+Troubleshooting
 
-## Troubleshooting
+- Puppeteer launch issues: ensure `npm install` completed; if corporate policies block Chromium, set `PUPPETEER_EXECUTABLE_PATH` to a local Chrome.
+- Missing `Items.csv`: confirm company/warehouse values and that “Fetch Items from Warehouse” ran successfully.
+- Empty POS Invoice: make sure Excel `item` values match ERPNext `Item Code`, and that items have a Standard Selling price.
 
-- Puppeteer cannot launch: ensure `npm install` completed and that your environment allows running Chromium. Try setting `PUPPETEER_EXECUTABLE_PATH` to a local Chrome if needed.
-- No `Items.csv`: verify the Company/Warehouse values and that the "Fetch Items from Warehouse" action runs successfully.
-- No items in POS Invoice: confirm that item codes in your shop Excel match ERPNext item codes, and that the items have valid price list rates.
+Files
 
-## Files
+- `main.js`: Automation + processing logic
+- `downloads/Items.csv`: Auto‑downloaded ERP stock snapshot
+- `.env`: Credentials and API token
 
-- `main.js`: End-to-end automation and processing logic.
-- `downloads/Items.csv`: Auto-downloaded ERPNext items file (overwritten each run).
-- `.env`: ERPNext credentials (email/password).
-
-## License
+License
 
 MIT
