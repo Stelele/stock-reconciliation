@@ -386,8 +386,8 @@ async function main() {
   );
 
   const processedData = processData(erpStockData, shopData);
-  // const itemPrices = await getItemPrices(processedData);
-  // await enterSales(itemPrices);
+  const itemPrices = await getItemPrices(processedData);
+  await enterSales(itemPrices);
 }
 
 await main();
