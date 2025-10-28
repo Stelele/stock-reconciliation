@@ -13,7 +13,7 @@ This helps catch missed POS entries after a physical/day-end count.
 1. Download ERP stock: Puppeteer logs into ERPNext Stock Reconciliation and downloads `Items.csv` to `downloads/`.
 2. Read shop file: The script opens your day-end Excel (latest sheet), trims the header, and filters rows that include both `add` and `total` columns.
 3. Match & compute: Matches shop `item` to ERP `Item Code`, computes `sold = Quantity − end` for items with positive sold.
-4. Fill POS: Puppeteer logs into ERPNext POS and for each sold item searches by name/code and sets the quantity.
+4. Create POS Invoice: Uses the ERPNext API to create a draft POS invoice with the calculated sold items and their quantities.
 
 Console prints a table of the sold items before POS entry.
 
@@ -35,6 +35,8 @@ Create a `.env` file in the project root:
 ```
 ERPNEXT_EMAIL=your.user@your-domain.com
 ERPNEXT_PASSWORD=your-erpnext-password
+ERPNEXT_TOKEN=your-erpnext-api-token
+ERPNEXT_URL=https://your-instance.erpnext.com
 ```
 
 ## Configuration
@@ -44,7 +46,7 @@ Open `main.js` and review the following:
 - `shopDataFileName`: Path to your day-end Excel. Example currently points to `G:/My Drive/.../Njeremoto day end September 2025.xlsx`. Update to your month/path.
 - `addon`: If you use a variant (e.g., " Butchery"), set accordingly to match your Excel filename.
 - Company/Warehouse: In `downloadErpCsvFile()` the script fills `Njeremoto Enterprises` and `Stores - NEs`. Change to your Company and Warehouse names used in ERPNext.
-- ERPNext URLs: The script navigates to `https://njeremoto.jh.erpnext.com/app/stock-reconciliation` and `/app/point-of-sale`. Update the domain if yours differs.
+- ERPNext URL: Set in your `.env` file as `ERPNEXT_URL`. The script will use this as the base URL for both web interface and API calls.
 - Downloads folder: Uses `./downloads`. Ensure it exists or allow Puppeteer to create it; you can create it manually if needed.
 
 ## Running
@@ -83,7 +85,7 @@ If your headers differ, adjust the field names in `main.js` where they are refer
 
 - Puppeteer cannot launch: ensure `npm install` completed and that your environment allows running Chromium. Try setting `PUPPETEER_EXECUTABLE_PATH` to a local Chrome if needed.
 - No `Items.csv`: verify the Company/Warehouse values and that the "Fetch Items from Warehouse" action runs successfully.
-- No items entered in POS: confirm that item names/codes used in your shop Excel match POS search terms, and that the script clicks the correct cart item.
+- No items in POS Invoice: confirm that item codes in your shop Excel match ERPNext item codes, and that the items have valid price list rates.
 
 ## Files
 
