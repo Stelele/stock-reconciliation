@@ -10,9 +10,8 @@ import fs from "node:fs";
 
 const ERPNEXT_EMAIL = process.env.ERPNEXT_EMAIL;
 const ERPNEXT_PASSWORD = process.env.ERPNEXT_PASSWORD;
-
-const addon = true ? "" : " Butchery";
-const shopDataFileName = `G:/My Drive/Njeremoto Shop/Operations/2025/9-September/Njeremoto${addon} day end September 2025.xlsx`;
+const ERPNEXT_TOKEN = process.env.ERPNEXT_TOKEN;
+const ERPNEXT_URL = "https://njeremoto.jh.erpnext.com";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -82,6 +81,17 @@ console.log(`Download path: ${downloadPath}`);
  */
 
 /**
+ * @typedef {{
+ *  unitPrice: number,
+ *  total: number,
+ * }} Price
+ */
+
+/**
+ * @typedef { SoldItem & Price } ItemPrice
+ */
+
+/**
  * @param {string} erpStockFileName
  * @returns {Array<ErpStockData>}
  */
@@ -110,12 +120,14 @@ function fetchErpData(erpStockFileName) {
 }
 
 /**
+ * @param {string} [shopDataFileName]
  * @returns {Array<ShopData>}
  */
-function fetchShopData() {
+function fetchShopData(shopDataFileName) {
   const shopFile = read(readFileSync(shopDataFileName).buffer);
 
   const latestSheetName = shopFile.SheetNames[shopFile.SheetNames.length - 1];
+  console.log(`Processing shop data file: ${shopDataFileName}`);
   console.log(`Processing sheet: ${latestSheetName}`);
 
   const range = utils.decode_range(shopFile.Sheets[latestSheetName]["!ref"]);
@@ -144,7 +156,7 @@ function processData(formattedErpStockData, filteredShopData) {
 
     if (shopItem) {
       finalData.push({
-        item: erpData["Item Code"],
+        item: erpData["Item Name"],
         start: Number.parseFloat(erpData["Quantity"]),
         end: shopItem["end "],
         sold: Number.parseFloat(erpData["Quantity"]) - shopItem["end "],
@@ -152,7 +164,7 @@ function processData(formattedErpStockData, filteredShopData) {
     }
   }
 
-  const soldItems = finalData.filter((item) => item.sold > 0);
+  const soldItems = finalData.filter((item) => item.sold !== 0);
   console.table(soldItems);
 
   return soldItems;
@@ -175,7 +187,7 @@ async function downloadErpCsvFile() {
 
   await page.setViewport({ width: 1080, height: 1024 });
 
-  await page.goto("https://njeremoto.jh.erpnext.com/app/stock-reconciliation");
+  await page.goto(`${ERPNEXT_URL}/app/stock-reconciliation`);
 
   await page.locator("#login_email").fill(ERPNEXT_EMAIL);
   await page.locator("#login_password").fill(ERPNEXT_PASSWORD);
@@ -187,12 +199,25 @@ async function downloadErpCsvFile() {
 
   await page.locator('button[data-label="Add Stock Reconciliation"]').click();
 
-  await page
-    .locator('input[data-fieldname="company"]')
-    .fill("Njeremoto Enterprises");
+  while (
+    (await page.evaluate(() => {
+      return document.querySelector('input[data-fieldname="company"]').value;
+    })) !== "Njeremoto Enterprises"
+  ) {
+    await page
+      .locator('input[data-fieldname="company"]')
+      .fill("Njeremoto Enterprises");
+
+    await sleep(1000);
+    await page.keyboard.press("Enter");
+  }
+
   await page
     .locator('input[data-fieldname="set_warehouse"]')
     .fill("Stores - NEs");
+
+  await sleep(1000);
+  await page.keyboard.press("Enter");
 
   await page
     .locator('button[data-label="Fetch%20Items%20from%20Warehouse"]')
@@ -202,6 +227,7 @@ async function downloadErpCsvFile() {
   await sleep(2000);
 
   await page.keyboard.press("Enter");
+  await sleep(1000);
 
   await page.locator('input[data-fieldname="ignore_empty_stock"]').click();
 
@@ -225,51 +251,123 @@ function sleep(ms) {
 }
 
 /**
- *
- * @param {Array<SoldItem>} soldItems
+ * @param {Array<ItemPrice>} itemPrices
  */
-async function enterSales(soldItems) {
-  const browser = await puppeteer.launch({ headless: false });
-  const page = await browser.newPage();
+async function enterSales(itemPrices) {
+  console.log("Entering sales...");
+  const headers = {
+    Authorization: `token ${ERPNEXT_TOKEN}`,
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
 
-  await page.setViewport({ width: 1080, height: 1024 });
+  const { data } = await fetch(`${ERPNEXT_URL}/api/v2/document/POS Invoice`, {
+    headers,
+    method: "POST",
+    body: JSON.stringify({
+      company: "Njeremoto Enterprises",
+      customer: "Butchery Customer",
+      pos_profile: "Enterprise Butchery POS",
+      currency: "USD",
+      items: itemPrices.map((item) => ({
+        item_code: item.item,
+        qty: item.sold,
+        warehouse: "Stores - NEs",
+      })),
+      payments: [
+        {
+          mode_of_payment: "Cash",
+          amount: itemPrices.reduce((acc, item) => acc + item.total, 0),
+        },
+      ],
+    }),
+  }).then((res) => res.json());
+  console.log(`Draft POS invoice created: ${data.name}`);
+}
 
-  await page.goto("https://njeremoto.jh.erpnext.com/app/point-of-sale");
+/**
+ *
+ * @param {'grocery' | 'butchery'} dept
+ * @returns
+ */
+function getShopDataFileName(dept = "grocery") {
+  const date = new Date();
 
-  await page.locator("#login_email").fill(ERPNEXT_EMAIL);
-  await page.locator("#login_password").fill(ERPNEXT_PASSWORD);
+  const month = date.getMonth() + 1;
+  const year = date.getFullYear();
+  const fullMonthName = date.toLocaleString("default", { month: "long" });
 
-  await Promise.all([
-    page.waitForNavigation(),
-    page.locator('.page-card-actions button[type="submit"]').click(),
-  ]);
+  const addon = dept === "grocery" ? "" : " Butchery";
+  const shopDataFileName = `G:/My Drive/Njeremoto Shop/Operations/${year}/${month}-${fullMonthName}/Njeremoto${addon} day end ${fullMonthName} ${year}.xlsx`;
 
-  await sleep(3000);
-  for (const soldItem of soldItems) {
-    await page
-      .locator('input[type="text"][class="input-with-feedback form-control"]')
-      .fill(soldItem.item);
+  return shopDataFileName;
+}
 
-    await sleep(2000);
+/**
+ * @param {Array<SoldItem>} soldItems
+ * @returns {Promise<ItemPrice[]>}
+ */
+async function getItemPrices(soldItems) {
+  const headers = {
+    Authorization: `token ${ERPNEXT_TOKEN}`,
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+  const itemCodes = soldItems.map((item) => item.item);
+  const fields = [
+    "name",
+    "item_code",
+    "price_list",
+    "currency",
+    "uom",
+    "price_list_rate",
+  ];
+  const filters = [
+    ["Item Price", "price_list", "=", "Standard Selling"],
+    ["Item Price", "item_code", "in", itemCodes],
+  ];
 
-    await page.evaluate(() => {
-      const cartElements = document.querySelectorAll(
-        'div[class="cart-item-wrapper"]'
-      );
+  const qs = new URLSearchParams({
+    fields: JSON.stringify(fields),
+    filters: JSON.stringify(filters),
+    limit_page_length: "1000",
+  });
 
-      /**
-       * @type {HTMLDivElement}
-       */
-      const lastCartElement = cartElements[cartElements.length - 1];
-      lastCartElement.click();
-    });
+  const { data } = await fetch(
+    `${ERPNEXT_URL}/api/v2/document/Item Price?${qs}`,
+    {
+      headers,
+    }
+  ).then((res) => res.json());
 
-    await page.locator('input[data-fieldname="qty"]').fill(`${soldItem.sold}`);
-    await sleep(1000);
-    await page.keyboard.press("Enter");
-    await sleep(1000);
-    await page.locator('div[class="close-btn"][title="Esc"]').click();
-  }
+  /**
+   * @type {Array<ItemPrice>}
+   */
+  return soldItems.map((item) => {
+    const price = data.find((entry) => entry.item_code === item.item);
+
+    return {
+      item: item.item,
+      start: item.start,
+      end: item.end,
+      sold: item.sold,
+      unitPrice: price.price_list_rate,
+      total: price.price_list_rate * item.sold,
+    };
+  });
+}
+
+/**
+ *
+ * @param {ErpStockData[]} erpStockData
+ * @param {ShopData[]} shopData
+ */
+function getUnmapedItems(erpStockData, shopData) {
+  return shopData.filter((shopItem) => {
+    return !erpStockData.find(
+      (erpItem) => erpItem["Item Code"] === shopItem["item"]
+    );
+  });
 }
 
 async function main() {
@@ -278,11 +376,18 @@ async function main() {
   const erpStockFileName = path.resolve(downloadPath, "Items.csv");
   const erpStockData = fetchErpData(erpStockFileName);
 
-  const shopData = fetchShopData();
+  const shopData = [...fetchShopData(getShopDataFileName("butchery"))].sort(
+    (a, b) => (a["item"] > b["item"] ? 1 : -1)
+  );
+
+  console.log("Unmapped items:");
+  console.table(
+    getUnmapedItems(erpStockData, shopData).map((item) => item["item"])
+  );
 
   const processedData = processData(erpStockData, shopData);
-
-  await enterSales(processedData);
+  // const itemPrices = await getItemPrices(processedData);
+  // await enterSales(itemPrices);
 }
 
 await main();
