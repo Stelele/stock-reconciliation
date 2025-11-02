@@ -3,7 +3,12 @@ dotenv.config();
 
 import { readFileSync } from "fs";
 import { read, utils } from "xlsx";
-import { getErpStockData, getItemPrices, enterSales } from "./erpnext.js";
+import {
+  getErpStockData,
+  getItemPrices,
+  enterSales,
+  getPaidPOSInvoices,
+} from "./erpnext.js";
 
 /**
  * @typedef { import("./erpnext.js").ErpStockEntry } ErpStockEntry
@@ -107,6 +112,16 @@ function getShopDataFileName(dept = "grocery") {
 }
 
 async function main() {
+  const posOpeningEntries = await getPaidPOSInvoices();
+  if (posOpeningEntries.length > 0) {
+    console.error(`
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+There are paid POS invoices in ERPNext that have not been consolidated.
+Please consolidate them before running this script to prevent double-invoicing.
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!`);
+    return;
+  }
+
   const erpData = await getErpStockData();
   const shopData = [...fetchShopData(getShopDataFileName("butchery"))].sort(
     (a, b) => (a["item"] > b["item"] ? 1 : -1)
@@ -114,7 +129,8 @@ async function main() {
 
   const processedData = processData(erpData, shopData);
   const itemPrices = await getItemPrices(processedData);
-  await enterSales(itemPrices);
+
+  await enterSales(itemPrices.filter((item) => item.sold > 0));
 }
 
 await main();

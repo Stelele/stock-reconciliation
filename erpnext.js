@@ -45,7 +45,7 @@ const headers = {
  * @returns {Promise<ErpStockEntry[]>}
  */
 export async function getErpStockData() {
-  const fields = [
+  const binFields = [
     "name",
     "item_code",
     "warehouse",
@@ -54,22 +54,25 @@ export async function getErpStockData() {
     "projected_qty",
     "valuation_rate",
   ];
-  const filters = [
+  const binFilters = [
     ["Bin", "warehouse", "=", "Stores - NEs"],
     ["Bin", "actual_qty", "!=", 0],
   ];
 
   const qs = new URLSearchParams({
-    fields: JSON.stringify(fields),
-    filters: JSON.stringify(filters),
-    limit_page_length: "1000",
+    fields: JSON.stringify(binFields),
+    filters: JSON.stringify(binFilters),
+    limit_page_length: 0,
   });
 
-  const { data } = await fetch(`${ERPNEXT_URL}/api/v2/document/Bin?${qs}`, {
-    headers,
-  }).then((res) => res.json());
+  const { data: openingBalances } = await fetch(
+    `${ERPNEXT_URL}/api/v2/document/Bin?${qs}`,
+    {
+      headers,
+    }
+  ).then((res) => res.json());
 
-  return data;
+  return openingBalances;
 }
 
 /**
@@ -124,8 +127,12 @@ export async function getItemPrices(soldItems) {
  */
 export async function enterSales(itemPrices) {
   console.log("Entering sales...");
+  if (itemPrices.length === 0) {
+    console.log("No sales to enter");
+    return;
+  }
 
-  const { data } = await fetch(`${ERPNEXT_URL}/api/v2/document/POS Invoice`, {
+  const response = await fetch(`${ERPNEXT_URL}/api/v2/document/POS Invoice`, {
     headers,
     method: "POST",
     body: JSON.stringify({
@@ -146,5 +153,35 @@ export async function enterSales(itemPrices) {
       ],
     }),
   }).then((res) => res.json());
-  console.log(`Draft POS invoice created: ${data.name}`);
+
+  if (!(response instanceof Error)) {
+    console.log(`Draft POS invoice created: ${response.name}`);
+  } else {
+    console.error(`Error creating POS invoice: ${response.status}`);
+    console.error(response);
+  }
+}
+
+export async function getPaidPOSInvoices() {
+  const posOpeningFields = ["name", "status"];
+  const posOpeningFilters = [
+    ["POS Invoice", "docstatus", "=", "1"],
+    ["POS Invoice", "company", "=", "Njeremoto Enterprises"],
+    ["POS Invoice", "status", "=", "Paid"],
+  ];
+
+  const qs = new URLSearchParams({
+    fields: JSON.stringify(posOpeningFields),
+    filters: JSON.stringify(posOpeningFilters),
+    limit_page_length: 0,
+  });
+
+  const { data: posInvoices } = await fetch(
+    `${ERPNEXT_URL}/api/v2/document/POS Invoice?${qs}`,
+    {
+      headers,
+    }
+  ).then((res) => res.json());
+
+  return posInvoices;
 }
