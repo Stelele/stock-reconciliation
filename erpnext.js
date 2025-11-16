@@ -154,8 +154,8 @@ export async function enterSales(itemPrices) {
     }),
   }).then((res) => res.json());
 
-  if (!(response instanceof Error)) {
-    console.log(`Draft POS invoice created: ${response.name}`);
+  if (response.data) {
+    console.log(`Draft POS invoice created: ${response.data.name}`);
   } else {
     console.error(`Error creating POS invoice: ${response.status}`);
     console.error(response);
