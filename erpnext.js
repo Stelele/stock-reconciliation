@@ -140,6 +140,7 @@ export async function enterSales(itemPrices) {
       customer: "Butchery Customer",
       pos_profile: "Enterprise Butchery POS",
       currency: "USD",
+      update_stock: 1,
       items: itemPrices.map((item) => ({
         item_code: item.item,
         qty: item.sold,
