@@ -74,7 +74,7 @@ function processData(formattedErpStockData, filteredShopData) {
 
   for (const erpData of formattedErpStockData) {
     const shopItem = filteredShopData.find(
-      (item) => item["item"] === erpData["item_code"]
+      (item) => item["item"] === erpData["item_code"],
     );
 
     if (shopItem) {
@@ -95,18 +95,17 @@ function processData(formattedErpStockData, filteredShopData) {
 
 /**
  *
- * @param {'grocery' | 'butchery'} dept
+ * @param {'Butchery' | 'Liquor'} dept
  * @returns
  */
-function getShopDataFileName(dept = "grocery") {
+function getShopDataFileName(dept = "Butchery" | "Liquor") {
   const date = new Date();
 
   const month = date.getMonth() + 1;
   const year = date.getFullYear();
   const fullMonthName = date.toLocaleString("default", { month: "long" });
 
-  const addon = dept === "grocery" ? "" : " Butchery";
-  const shopDataFileName = `G:/My Drive/Njeremoto Shop/Operations/${year}/${month}-${fullMonthName}/Njeremoto${addon} day end ${fullMonthName} ${year}.xlsx`;
+  const shopDataFileName = `G:/My Drive/Njeremoto Shop/Operations/${year}/${month}-${fullMonthName}/Njeremoto ${dept} day end ${fullMonthName} ${year}.xlsx`;
 
   return shopDataFileName;
 }
@@ -123,9 +122,10 @@ Please consolidate them before running this script to prevent double-invoicing.
   }
 
   const erpData = await getErpStockData();
-  const shopData = [...fetchShopData(getShopDataFileName("butchery"))].sort(
-    (a, b) => (a["item"] > b["item"] ? 1 : -1)
-  );
+  const shopData = [
+    ...fetchShopData(getShopDataFileName("Butchery")),
+    ...fetchShopData(getShopDataFileName("Liquor")),
+  ].sort((a, b) => (a["item"] > b["item"] ? 1 : -1));
 
   const processedData = processData(erpData, shopData);
   const itemPrices = await getItemPrices(processedData);

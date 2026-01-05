@@ -69,7 +69,7 @@ export async function getErpStockData() {
     `${ERPNEXT_URL}/api/v2/document/Bin?${qs}`,
     {
       headers,
-    }
+    },
   ).then((res) => res.json());
 
   return openingBalances;
@@ -102,7 +102,7 @@ export async function getItemPrices(soldItems) {
 
   const { data } = await fetch(
     `${ERPNEXT_URL}/api/v2/document/Item Price?${qs}`,
-    { headers }
+    { headers },
   ).then((res) => res.json());
 
   /**
@@ -137,8 +137,8 @@ export async function enterSales(itemPrices) {
     method: "POST",
     body: JSON.stringify({
       company: "Njeremoto Enterprises",
-      customer: "Butchery Customer",
-      pos_profile: "Enterprise Butchery POS",
+      customer: "Reconciliation Customer",
+      pos_profile: "Enterprise POS",
       currency: "USD",
       update_stock: 1,
       items: itemPrices.map((item) => ({
@@ -181,7 +181,7 @@ export async function getPaidPOSInvoices() {
     `${ERPNEXT_URL}/api/v2/document/POS Invoice?${qs}`,
     {
       headers,
-    }
+    },
   ).then((res) => res.json());
 
   return posInvoices;
