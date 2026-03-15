@@ -149,7 +149,9 @@ export async function enterSales(itemPrices) {
       payments: [
         {
           mode_of_payment: "Cash",
-          amount: itemPrices.reduce((acc, item) => acc + item.total, 0),
+          amount: Math.round(
+            itemPrices.reduce((acc, item) => acc + item.total, 0),
+          ),
         },
       ],
     }),
