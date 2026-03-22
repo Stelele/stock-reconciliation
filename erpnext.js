@@ -149,7 +149,7 @@ export async function enterSales(itemPrices) {
       payments: [
         {
           mode_of_payment: "Cash",
-          amount: Math.round(
+          amount: Math.ceil(
             itemPrices.reduce((acc, item) => acc + item.total, 0),
           ),
         },
