@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+dotenv.config({ path: ".env.local" });
 dotenv.config();
 
 import { readFileSync } from "fs";
@@ -105,7 +106,7 @@ function getShopDataFileName(dept = "Butchery" | "Liquor") {
   const year = date.getFullYear();
   const fullMonthName = date.toLocaleString("default", { month: "long" });
 
-  const shopDataFileName = `G:/My Drive/Njeremoto Shop/Operations/${year}/${month}-${fullMonthName}/Njeremoto ${dept} day end ${fullMonthName} ${year}.xlsx`;
+  const shopDataFileName = `${process.env.EXCEL_FILE_PATH}/${year}/${month}-${fullMonthName}/Njeremoto ${dept} day end ${fullMonthName} ${year}.xlsx`;
 
   return shopDataFileName;
 }
