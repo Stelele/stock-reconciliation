@@ -76,7 +76,7 @@ const headers = {
 - **Endpoint**: `GET ${ERPNEXT_URL}/api/v2/document/POS Invoice`
 - **Purpose**: At startup, check for any already-paid POS invoices for the company to prevent double-invoicing.
 - **Filters**: `docstatus = 1` (submitted), `company = "Njeremoto Enterprises"`, `status = "Paid"`.
-- **Returns**: Array of paid invoice names, or empty array if none found.
+- **Returns**: Array of paid POS Invoice record objects (fields include `name`, `status`), or empty array if none found.
 
 ## Main Orchestration (`main.js`)
 
@@ -110,7 +110,7 @@ import {
 
 - Reads an Excel file from disk using `readFileSync` + `xlsx.read`.
 - Determines the latest sheet name (last in `SheetNames` array).
-- Decodes the range and sets the header row start to row 2 (skips the first row).
+- Decodes the range and sets the start row to index 2, skipping the first two rows (the header area).
 - Converts the sheet to JSON using `utils.sheet_to_json`.
 - Filters rows that have both `add` and `total` fields.
 - Sorts alphabetically by `item` name.
@@ -175,7 +175,7 @@ main()
 
 ### Prerequisites
 
-- **Node.js**: `>=12`; the script uses ES module syntax (`import`/`export`), so Node `--input-type=module` or rename to `.mjs` is not needed if using Node 18+ with default ESM support, or configure `"type": "module"` in package.json (already set).
+- **Node.js**: 18+ (the script uses ES module syntax — `import`/`export` — and the global `fetch` API; `"type": "module"` is already set in package.json).
 - **ERPNext instance** with API access.
 - **Excel files** day-end data in the expected path structure.
 

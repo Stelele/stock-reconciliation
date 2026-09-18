@@ -35,7 +35,7 @@ The script executes these steps in order:
    - Reads the latest worksheet from the Excel file at the path template:
      `${EXCEL_FILE_PATH}/${year}/${month}-${fullMonthName}/Njeremoto ${dept} day end ${fullMonthName} ${year}.xlsx`
    - Two departments are supported: `Butchery` and `Liquor`.
-   - Parses the sheet, skips the header row, and extracts rows with `item`, `add`, `total`, and `end ` (trailing space in column name) columns.
+   - Parses the sheet, skips the first two rows (header area), and extracts rows with `item`, `add`, `total`, and `end ` (trailing space in column name) columns.
 
 4. **Compute deltas (sold quantity)**
    - For each ERP stock entry, finds a matching Excel item by `item_code` / `item` field.
@@ -54,7 +54,7 @@ The script executes these steps in order:
      - Currency: `USD`
      - `update_stock: 1`
      - Items array with `item_code`, `qty` (sold quantity), and `warehouse: "Stores - NEs"`
-     - Payment: single Cash entry for the total amount (sum of `price_list_rate * sold` per item).
+     - Payment: single Cash entry for the total amount — sum of `price_list_rate * sold` per item, rounded up to a whole unit (`Math.ceil(...)`).
 
 ### 4. Output Interpretation
 
@@ -66,7 +66,7 @@ The script executes these steps in order:
 - **Butchery** (default): Excel path includes `Njeremoto Butchery day end...`
 - **Liquor**: Excel path includes `Njeremoto Liquor day end...`
 
-To switch departments, modify the `dept` parameter in `main.js:102` or call `getShopDataFileName("Liquor")`.
+`main()` reads the day-end Excel for **both** `Butchery` and `Liquor` via explicit calls in `main.js:127–128`; those calls are the control point for which departments are processed.
 
 ## Excel File Format Requirements
 
@@ -81,7 +81,7 @@ To switch departments, modify the `dept` parameter in `main.js:102` or call `get
 ---|---|---
 Script aborts with "There are paid POS invoices..." | Unconsolidated paid invoices exist in ERPNext | Consolidate them in ERPNext before re-running.
 Empty console table (no items) | No matching items between ERP and Excel | Verify Excel `item` codes match ERPNext `item_code`; check price list has prices.
-POS Invoice created with 0 items | No items had `sold > 0` | Check that `actual_qty > Excel "end "` for some items.
+No POS Invoice created | No items had `sold > 0`, so `enterSales()` returns early without POSTing | Check that `actual_qty > Excel "end "` for some items.
 401/403 API errors | Invalid or improperly formatted `ERPNEXT_TOKEN` | Token must be `api_key:api_secret` format with correct permissions. |
 Excel not found | `EXCEL_FILE_PATH` not set or wrong path | Set `EXCEL_FILE_PATH` in `.env` to the absolute path containing the Excel directories. |
 

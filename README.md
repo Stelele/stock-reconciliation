@@ -21,7 +21,7 @@ Reconcile stock values between ERPNext and physical inventory; find product sale
 
 ## Requirements
 
-- **Node.js**: `>=12`; tested with Node 18+
+- **Node.js**: 18+
 - **ERPNext API key/secret** with permissions to read `Bin`, read `Item Price`, and create `POS Invoice`
 - **ERPNext site URL**
 
@@ -52,7 +52,7 @@ EXCEL_FILE_PATH=/absolute/path/to/excel/files
 | Price list | `erpnext.js:94` | Update the price list used if not "Standard Selling". |
 | POS invoice defaults | `erpnext.js:136–158` | Company, customer, POS profile, currency, and item warehouse. |
 | Shop Excel path | `main.js:109` | Path template for day-end Excel files. |
-| Department | `main.js:102` | Default is `Butchery`; change to `Liquor` if needed. |
+| Departments | `main.js:127–128` | `main()` reads the day-end Excel for both `Butchery` and `Liquor`. |
 
 ## Usage
 
