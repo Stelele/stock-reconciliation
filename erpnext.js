@@ -10,6 +10,67 @@ const headers = {
   Accept: "application/json",
 };
 
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 2000;
+
+/**
+ * Fetch with retries on network errors (e.g. dropped sockets) and transient
+ * HTTP statuses (429, 5xx). Waits for a short backoff between attempts and
+ * rethrows the last error once the retry budget is exhausted. Non-retriable
+ * HTTP errors (4xx) throw immediately with the response body in the message,
+ * so callers always receive either an ok Response or an exception.
+ * Note: retrying a non-idempotent request (POST) can duplicate a document if
+ * the first attempt actually succeeded server-side — accepted at the
+ * enterSales call site.
+ * @param {string} url
+ * @param {RequestInit} [options]
+ * @returns {Promise<Response>}
+ */
+async function fetchWithRetry(url, options = {}) {
+  /** @type {Error | undefined} */
+  let lastError;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      const code = /** @type {{ cause?: { code?: string } }} */ (lastError)
+        ?.cause?.code;
+      console.log(
+        `Error${code ? ` (${code})` : ""}, retrying ${attempt}/${MAX_RETRIES}: ${url}`,
+      );
+      await new Promise((resolve) =>
+        setTimeout(resolve, RETRY_DELAY_MS * attempt),
+      );
+    }
+
+    /** @type {Response} */
+    let response;
+    try {
+      response = await fetch(url, options);
+    } catch (error) {
+      lastError =
+        error instanceof Error ? error : new Error(String(error));
+      continue;
+    }
+
+    if (response.ok) {
+      return response;
+    }
+
+    // 429 and 5xx are usually transient — treat them like network errors.
+    if (response.status === 429 || response.status >= 500) {
+      const body = await response.text();
+      lastError = new Error(`HTTP ${response.status}: ${body}`);
+      continue;
+    }
+
+    // Other client errors will not fix themselves on a retry.
+    const body = await response.text();
+    throw new Error(`ERPNext returned HTTP ${response.status}: ${body}`);
+  }
+
+  throw lastError;
+}
+
 /**
  * @typedef {{
  *   name: string,
@@ -66,7 +127,7 @@ export async function getErpStockData() {
     limit_page_length: 0,
   });
 
-  const { data: openingBalances } = await fetch(
+  const { data: openingBalances } = await fetchWithRetry(
     `${ERPNEXT_URL}/api/v2/document/Bin?${qs}`,
     {
       headers,
@@ -101,7 +162,7 @@ export async function getItemPrices(soldItems) {
     limit_page_length: "1000",
   });
 
-  const { data } = await fetch(
+  const { data } = await fetchWithRetry(
     `${ERPNEXT_URL}/api/v2/document/Item Price?${qs}`,
     { headers },
   ).then((res) => res.json());
@@ -133,36 +194,38 @@ export async function enterSales(itemPrices) {
     return;
   }
 
-  const response = await fetch(`${ERPNEXT_URL}/api/v2/document/POS Invoice`, {
-    headers,
-    method: "POST",
-    body: JSON.stringify({
-      company: "Njeremoto Enterprises",
-      customer: "Reconciliation Customer",
-      pos_profile: "Enterprise POS",
-      currency: "USD",
-      update_stock: 1,
-      items: itemPrices.map((item) => ({
-        item_code: item.item,
-        qty: item.sold,
-        warehouse: "Stores - NEs",
-      })),
-      payments: [
-        {
-          mode_of_payment: "Cash",
-          amount: Math.ceil(
-            itemPrices.reduce((acc, item) => acc + item.total, 0),
-          ),
-        },
-      ],
-    }),
-  }).then((res) => res.json());
+  const response = await fetchWithRetry(
+    `${ERPNEXT_URL}/api/v2/document/POS Invoice`,
+    {
+      headers,
+      method: "POST",
+      body: JSON.stringify({
+        company: "Njeremoto Enterprises",
+        customer: "Reconciliation Customer",
+        pos_profile: "Enterprise POS",
+        currency: "USD",
+        update_stock: 1,
+        items: itemPrices.map((item) => ({
+          item_code: item.item,
+          qty: item.sold,
+          warehouse: "Stores - NEs",
+        })),
+        payments: [
+          {
+            mode_of_payment: "Cash",
+            amount: Math.ceil(
+              itemPrices.reduce((acc, item) => acc + item.total, 0),
+            ),
+          },
+        ],
+      }),
+    },
+  ).then((res) => res.json());
 
-  if (response.data) {
+  if (response.data?.name) {
     console.log(`Draft POS invoice created: ${response.data.name}`);
   } else {
-    console.error(`Error creating POS invoice: ${response.status}`);
-    console.error(response);
+    console.error(`Error creating POS invoice: ${JSON.stringify(response)}`);
   }
 }
 
@@ -180,7 +243,7 @@ export async function getPaidPOSInvoices() {
     limit_page_length: 0,
   });
 
-  const { data: posInvoices } = await fetch(
+  const { data: posInvoices } = await fetchWithRetry(
     `${ERPNEXT_URL}/api/v2/document/POS Invoice?${qs}`,
     {
       headers,
