@@ -14,10 +14,14 @@ const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000;
 
 /**
- * Fetch with retries on network errors (e.g. dropped sockets). Waits for a
- * short backoff between attempts and rethrows the last error once the retry
- * budget is exhausted. Note: retrying a non-idempotent request (POST) can
- * duplicate a document if the first attempt actually succeeded server-side.
+ * Fetch with retries on network errors (e.g. dropped sockets) and transient
+ * HTTP statuses (429, 5xx). Waits for a short backoff between attempts and
+ * rethrows the last error once the retry budget is exhausted. Non-retriable
+ * HTTP errors (4xx) throw immediately with the response body in the message,
+ * so callers always receive either an ok Response or an exception.
+ * Note: retrying a non-idempotent request (POST) can duplicate a document if
+ * the first attempt actually succeeded server-side — accepted at the
+ * enterSales call site.
  * @param {string} url
  * @param {RequestInit} [options]
  * @returns {Promise<Response>}
@@ -31,18 +35,35 @@ async function fetchWithRetry(url, options = {}) {
       const code = /** @type {{ cause?: { code?: string } }} */ (lastError)
         ?.cause?.code;
       console.log(
-        `Network error${code ? ` (${code})` : ""}, retrying ${attempt}/${MAX_RETRIES}: ${url}`,
+        `Error${code ? ` (${code})` : ""}, retrying ${attempt}/${MAX_RETRIES}: ${url}`,
       );
       await new Promise((resolve) =>
         setTimeout(resolve, RETRY_DELAY_MS * attempt),
       );
     }
 
+    /** @type {Response} */
+    let response;
     try {
-      return await fetch(url, options);
+      response = await fetch(url, options);
     } catch (error) {
       lastError = /** @type {Error} */ (error);
+      continue;
     }
+
+    if (response.ok) {
+      return response;
+    }
+
+    // 429 and 5xx are usually transient — treat them like network errors.
+    if (response.status === 429 || response.status >= 500) {
+      lastError = new Error(`HTTP ${response.status}`);
+      continue;
+    }
+
+    // Other client errors will not fix themselves on a retry.
+    const body = await response.text();
+    throw new Error(`ERPNext returned HTTP ${response.status}: ${body}`);
   }
 
   throw lastError;
@@ -199,12 +220,7 @@ export async function enterSales(itemPrices) {
     },
   ).then((res) => res.json());
 
-  if (response.data) {
-    console.log(`Draft POS invoice created: ${response.data.name}`);
-  } else {
-    console.error(`Error creating POS invoice: ${response.status}`);
-    console.error(response);
-  }
+  console.log(`Draft POS invoice created: ${response.data.name}`);
 }
 
 export async function getPaidPOSInvoices() {
