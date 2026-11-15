@@ -47,7 +47,8 @@ async function fetchWithRetry(url, options = {}) {
     try {
       response = await fetch(url, options);
     } catch (error) {
-      lastError = /** @type {Error} */ (error);
+      lastError =
+        error instanceof Error ? error : new Error(String(error));
       continue;
     }
 
@@ -57,7 +58,8 @@ async function fetchWithRetry(url, options = {}) {
 
     // 429 and 5xx are usually transient — treat them like network errors.
     if (response.status === 429 || response.status >= 500) {
-      lastError = new Error(`HTTP ${response.status}`);
+      const body = await response.text();
+      lastError = new Error(`HTTP ${response.status}: ${body}`);
       continue;
     }
 
@@ -220,7 +222,11 @@ export async function enterSales(itemPrices) {
     },
   ).then((res) => res.json());
 
-  console.log(`Draft POS invoice created: ${response.data.name}`);
+  if (response.data?.name) {
+    console.log(`Draft POS invoice created: ${response.data.name}`);
+  } else {
+    console.error(`Error creating POS invoice: ${JSON.stringify(response)}`);
+  }
 }
 
 export async function getPaidPOSInvoices() {
